@@ -1,0 +1,190 @@
+@startuml ruby-effect-class-diagram
+
+' Core Effect class
+class Effect<Success, Error, Requirements> {
+  - value : Success | Error
+  - context : Context<Requirements>
+  - is_success : Boolean
+  - is_failure : Boolean
+  + succeed(value : Success) : Effect<Success, Never, Never>
+  + fail(error : Error) : Effect<Never, Error, Never>
+  + sync(thunk : Proc) : Effect<Success, Never, Never>
+  + try(options : Hash) : Effect<Success, Error, Never>
+  + promise(thunk : Proc) : Effect<Success, Never, Never>
+  + try_promise(options : Hash) : Effect<Success, Error, Never>
+  + map(fn : Proc) : Effect
+  + flat_map(fn : Proc) : Effect
+  + catch_all(fn : Proc) : Effect
+  + catch_tag(tag : Symbol, fn : Proc) : Effect
+  + provide(context : Context) : Effect
+  + run_sync() : Success
+  + run_promise() : Promise<Success>
+}
+
+' Context for dependency injection
+class Context<Requirements> {
+  - services : Hash<Symbol, Any>
+  + add(tag : Symbol, service : Any) : Context
+  + get(tag : Symbol) : Any
+  + merge(other : Context) : Context
+  + empty() : Context
+}
+
+' Service interface for dependency injection
+class Service<T> {
+  - tag : Symbol
+  - implementation : T
+  + of(tag : Symbol) : Service<T>
+  + provide(impl : T) : Layer
+}
+
+' Layer for building service dependencies
+class Layer<RIn, ROut, E> {
+  - build : Effect<ROut, E, RIn>
+  + provide_to(effect : Effect) : Effect
+  + and_then(other : Layer) : Layer
+  + memoize() : Effect<Layer>
+}
+
+' Exit type representing the result of an effect
+class Exit<Success, Error> {
+  + success(value : Success) : Exit<Success, Error>
+  + failure(cause : Cause<Error>) : Exit<Success, Error>
+  + is_success?() : Boolean
+  + is_failure?() : Boolean
+  + match(options : Hash) : Any
+}
+
+' Cause for error tracking
+class Cause<Error> {
+  + fail(error : Error) : Cause<Error>
+  + die(defect : Exception) : Cause<Error>
+  + interrupt(fiber_id : FiberId) : Cause<Error>
+  + sequential(left : Cause, right : Cause) : Cause<Error>
+  + parallel(left : Cause, right : Cause) : Cause<Error>
+  + failures() : Array<Error>
+  + defects() : Array<Exception>
+}
+
+' Fiber for concurrency
+class Fiber<Success, Error> {
+  - fiber_id : FiberId
+  - status : Symbol
+  + fork(effect : Effect) : Effect<Fiber>
+  + join() : Effect<Success, Error>
+  + await() : Effect<Exit<Success, Error>>
+  + interrupt() : Effect<Exit<Success, Error>>
+}
+
+' FiberId for fiber identification
+class FiberId {
+  - id : Integer
+  - start_time : Time
+  + make() : FiberId
+  + to_s() : String
+}
+
+' Deferred for fiber communication
+class Deferred<Success, Error> {
+  + make() : Effect<Deferred<Success, Error>>
+  + succeed(value : Success) : Effect<Boolean>
+  + fail(error : Error) : Effect<Boolean>
+  + await() : Effect<Success, Error>
+  + poll() : Effect<Option<Exit<Success, Error>>>
+}
+
+' Queue for concurrent data structures
+class Queue<T> {
+  - capacity : Integer
+  + bounded(capacity : Integer) : Effect<Queue<T>>
+  + unbounded() : Effect<Queue<T>>
+  + offer(item : T) : Effect<Boolean>
+  + take() : Effect<T>
+  + size() : Effect<Integer>
+}
+
+' Option type for optional values
+class Option<T> {
+  + some(value : T) : Option<T>
+  + none() : Option<T>
+  + is_some?() : Boolean
+  + is_none?() : Boolean
+  + get_or_else(default : T) : T
+  + map(fn : Proc) : Option
+  + flat_map(fn : Proc) : Option
+}
+
+' Either type for error handling
+class Either<L, R> {
+  + left(value : L) : Either<L, R>
+  + right(value : R) : Either<L, R>
+  + is_left?() : Boolean
+  + is_right?() : Boolean
+  + map(fn : Proc) : Either
+  + flat_map(fn : Proc) : Either
+}
+
+' Schedule for retrying and repetition
+class Schedule<Env, In, Out> {
+  + forever() : Schedule
+  + once() : Schedule
+  + recurs(n : Integer) : Schedule
+  + spaced(duration : Duration) : Schedule
+  + exponential(base : Duration) : Schedule
+  + compose(other : Schedule) : Schedule
+}
+
+' Duration for time handling
+class Duration {
+  - nanos : Integer
+  + millis(n : Integer) : Duration
+  + seconds(n : Integer) : Duration
+  + minutes(n : Integer) : Duration
+  + to_millis() : Integer
+  + +(other : Duration) : Duration
+}
+
+' Runtime for executing effects
+class Runtime {
+  - context : Context
+  - runtime_flags : Integer
+  + default() : Runtime
+  + run_sync(effect : Effect) : Any
+  + run_promise(effect : Effect) : Promise
+  + run_fork(effect : Effect) : Fiber
+}
+
+' Relationships
+Effect --> Context : uses
+Effect --> Exit : produces
+Effect --> Fiber : can fork
+Exit --> Cause : contains on failure
+Fiber --> FiberId : has
+Service --> Layer : creates
+Layer --> Effect : builds
+Deferred --> Exit : completes with
+Queue --> Effect : operations return
+Schedule --> Duration : uses
+Runtime --> Effect : executes
+Runtime --> Context : provides
+
+note right of Effect
+  Core type representing a lazy,
+  composable computation that may:
+  - Succeed with Success
+  - Fail with Error
+  - Require Requirements
+end note
+
+note right of Context
+  Dependency injection container
+  for services required by effects
+end note
+
+note right of Fiber
+  Lightweight thread for
+  concurrent execution
+end note
+
+@enduml
+

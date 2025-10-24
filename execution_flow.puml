@@ -1,0 +1,114 @@
+@startuml effect-execution-sequence
+
+actor User
+participant "Effect" as E
+participant "Runtime" as R
+participant "Context" as C
+participant "Fiber" as F
+participant "Exit" as Ex
+
+== Creating an Effect ==
+User -> E : Effect.succeed(42)
+activate E
+E --> User : Effect<Integer, Never, Never>
+deactivate E
+
+== Composing Effects ==
+User -> E : effect.map { |x| x * 2 }
+activate E
+E --> User : Effect<Integer, Never, Never>
+deactivate E
+
+User -> E : effect.flat_map { |x| Effect.succeed(x + 1) }
+activate E
+E --> User : Effect<Integer, Never, Never>
+deactivate E
+
+== Providing Dependencies ==
+User -> C : Context.empty.add(:db, db_service)
+activate C
+C --> User : Context
+deactivate C
+
+User -> E : effect.provide(context)
+activate E
+E --> User : Effect<Integer, Never, Never>
+deactivate E
+
+== Running Effect Synchronously ==
+User -> R : Runtime.default.run_sync(effect)
+activate R
+R -> E : execute
+activate E
+E -> C : get_service(:db)
+activate C
+C --> E : db_service
+deactivate C
+E -> E : perform computation
+E -> Ex : Exit.success(result)
+activate Ex
+Ex --> E : Exit
+deactivate Ex
+E --> R : result
+deactivate E
+R --> User : 85
+deactivate R
+
+== Running Effect with Fiber ==
+User -> R : Runtime.default.run_fork(effect)
+activate R
+R -> F : Fiber.new(effect)
+activate F
+F -> E : execute in background
+activate E
+E --> F : running
+deactivate E
+F --> R : Fiber
+deactivate F
+R --> User : Fiber<Integer, Never>
+deactivate R
+
+User -> F : fiber.join
+activate F
+F -> E : await completion
+activate E
+E -> Ex : Exit.success(result)
+activate Ex
+Ex --> E : Exit
+deactivate Ex
+E --> F : result
+deactivate E
+F --> User : Effect<Integer, Never>
+deactivate F
+
+== Error Handling ==
+User -> E : Effect.fail(error)
+activate E
+E --> User : Effect<Never, Error, Never>
+deactivate E
+
+User -> E : effect.catch_all { |e| Effect.succeed(default) }
+activate E
+E --> User : Effect<Integer, Never, Never>
+deactivate E
+
+User -> R : Runtime.default.run_sync(effect)
+activate R
+R -> E : execute
+activate E
+E -> Ex : Exit.failure(Cause.fail(error))
+activate Ex
+Ex --> E : Exit
+deactivate Ex
+E -> E : catch_all handler
+E -> Ex : Exit.success(default)
+activate Ex
+Ex --> E : Exit
+deactivate Ex
+E --> R : default
+deactivate E
+R --> User : default
+deactivate R
+
+@enduml
+
